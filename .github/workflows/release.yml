@@ -1,0 +1,95 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [arm64, x86_64]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (${{ matrix.arch }})
+        working-directory: TimeDesktopMac
+        run: |
+          # Generate icon
+          clang -fobjc-arc -O2 -framework AppKit -framework Foundation -o gen_icon gen_icon.m
+          ./gen_icon
+          rm -f gen_icon
+
+          # Build app bundle
+          APP="TimeDesktop.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          clang -arch ${{ matrix.arch }} \
+            -fobjc-arc -O2 -Wall -Wextra -Wno-unused-parameter \
+            -framework AppKit -framework Foundation -framework Carbon \
+            -o "$APP/Contents/MacOS/TimeDesktop" \
+            main.m ClockWindow.m TimezoneData.m NetTimeSync.m
+          cp Info.plist "$APP/Contents/"
+          cp AppIcon.icns "$APP/Contents/Resources/"
+
+          # Verify
+          file "$APP/Contents/MacOS/TimeDesktop"
+
+      - name: Package
+        working-directory: TimeDesktopMac
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent TimeDesktop.app \
+            "TimeDesktop-${{ matrix.arch }}-macOS.zip"
+          cp AppIcon.icns ../AppIcon.icns 2>/dev/null || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TimeDesktop-${{ matrix.arch }}
+          path: |
+            TimeDesktopMac/TimeDesktop-${{ matrix.arch }}-macOS.zip
+            TimeDesktopMac/AppIcon.icns
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: TimeDesktop ${{ github.ref_name }}
+          body: |
+            ## TimeDesktop for macOS ${{ github.ref_name }}
+
+            多时区桌面浮动时钟，原生 Objective-C / AppKit 实现。
+
+            ### 下载
+
+            | 文件 | 适用架构 |
+            |------|---------|
+            | `TimeDesktop-arm64-macOS.zip` | Apple Silicon (M1/M2/M3/M4) |
+            | `TimeDesktop-x86_64-macOS.zip` | Intel Mac |
+            | `AppIcon.icns` | 应用图标 |
+
+            ### 使用方式
+
+            1. 下载对应架构的 zip 文件
+            2. 解压得到 `TimeDesktop.app`
+            3. 双击运行，菜单栏出现时钟图标
+            4. 右键窗口打开设置菜单
+            5. `⌘⌥T` 快速切换显示/隐藏
+          files: |
+            TimeDesktop-arm64-macOS.zip
+            TimeDesktop-x86_64-macOS.zip
+            AppIcon.icns
+          generate_release_notes: true
