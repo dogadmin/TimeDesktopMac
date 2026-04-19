@@ -1,0 +1,10 @@
+# Build artifacts
+TimeDesktopMac/TimeDesktop.app/
+TimeDesktopMac/AppIcon.icns
+TimeDesktopMac/AppIcon.iconset/
+TimeDesktopMac/gen_icon
+*.o
+*.dSYM/
+
+# macOS
+.DS_Store
